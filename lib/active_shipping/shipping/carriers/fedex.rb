@@ -114,6 +114,15 @@ module ActiveMerchant
         response = commit(save_request(tracking_request), (options[:test] || false)).gsub(/<(\/)?.*?\:(.*?)>/, '<\1\2>')
         parse_tracking_response(response, options)
       end
+
+      def verify_address(address, options = {})
+        options = @options.update(options)
+         
+        address_verification_request = build_address_verification_request(address, options)
+        
+        response = commit(save_request(address_verification_request), false)
+        parse_address_verification_response(response)
+      end
       
       protected
       def build_rate_request(origin, destination, packages, options={})
@@ -168,6 +177,52 @@ module ActiveMerchant
         end
         xml_request.to_s
       end
+
+      def build_address_verification_request(address,options={})
+        is_residential = !! options[:residential]
+        root_node = XmlNode.new("AddressValidationRequest",
+          'xmlns' => "http://fedex.com/ws/addressvalidation/v2",
+          'xmlns:xsd'  => "http://www.w3.org/2001/XMLSchema",
+          'xmlns:soap' => "http://schemas.xmlsoap.org/soap/envelope/", 
+          'xmlns:xsi'  => "http://www.w3.org/2001/XMLSchema-instance",
+          'xmlns:rep'  => "http://fedex.com/esb/report") do |root_node|
+          root_node << build_request_header
+          
+          root_node << XmlNode.new("Version") do |version_node|
+            version_node << XmlNode.new("ServiceId", 'aval')
+            version_node << XmlNode.new("Major", '2')
+            version_node << XmlNode.new("Intermediate", '0')
+            version_node << XmlNode.new("Minor", '0')
+          end
+          
+          root_node << XmlNode.new("RequestTimestamp", Time.now)
+          
+          root_node << XmlNode.new("Options") do |options_node|
+            options_node << XmlNode.new("CheckResidentialStatus", 1)
+            options_node << XmlNode.new("MaximumNumberOfMatches", 5)
+            options_node << XmlNode.new("StreetAccuracy", 'LOOSE')
+            options_node << XmlNode.new("DirectionalAccuracy", 'LOOSE')
+            options_node << XmlNode.new("CompanyNameAccuracy", 'LOOSE')
+            options_node << XmlNode.new("RecognizeAlternateCityNames", "true")
+            options_node << XmlNode.new("ReturnParsedElements", "true")
+          end
+          
+          
+          root_node << XmlNode.new("AddressesToValidate") do |addrs_node|
+            addrs_node << XmlNode.new("AddressId",   'first')
+            addrs_node << XmlNode.new("Address") do |addr_node|
+              addr_node << XmlNode.new("StreetLines", [address.address1, address.address2, address.address3].join("\n"))
+              addr_node << XmlNode.new("City", address.city)
+              addr_node << XmlNode.new("StateOrProvinceCode", address.state)
+              addr_node << XmlNode.new("PostalCode", address.postal_code)
+              addr_node << XmlNode.new("CountryCode", address.country_code)
+              addr_node << XmlNode.new("Residential", is_residential)
+            end
+          end
+        end
+        
+        root_node.to_s
+      end
       
       def build_tracking_request(tracking_number, options={})
         xml_request = XmlNode.new('TrackRequest', 'xmlns' => 'http://fedex.com/ws/track/v3') do |root_node|
@@ -192,8 +247,9 @@ module ActiveMerchant
         end
         xml_request.to_s
       end
-      
-      def build_request_header
+    
+     
+      def build_request_header()
         web_authentication_detail = XmlNode.new('WebAuthenticationDetail') do |wad|
           wad << XmlNode.new('UserCredential') do |uc|
             uc << XmlNode.new('Key', @options[:key])
@@ -245,14 +301,52 @@ module ActiveMerchant
                               :currency => rated_shipment.get_text('RatedShipmentDetails/ShipmentRateDetail/TotalNetCharge/Currency').to_s,
                               :packages => packages,
                               :delivery_date => rated_shipment.get_text('DeliveryTimestamp').to_s)
-	    end
+        end
 		
         if rate_estimates.empty?
           success = false
           message = "No shipping rates could be found for the destination address" if message.blank?
         end
-
+        
         RateResponse.new(success, message, Hash.from_xml(response), :rates => rate_estimates, :xml => response, :request => last_request, :log_xml => options[:log_xml])
+      end
+      
+      def parse_address_verification_response(response)
+        ns = "v2"
+        nsp = "#{ns}:"
+        xml = REXML::Document.new(response)
+        root_node = xml.elements["#{nsp}AddressValidationReply"]
+         
+        success = response_success?(xml,ns)
+        message = response_message(xml,ns)
+         
+        addresses = []
+        e_results = xml.elements["/*/#{nsp}AddressResults"]
+        
+        results = e_results[1..-1].map do |e_details|
+          score = e_details.elements["#{nsp}Score"].text.to_i
+          
+          e_res_status    = e_details.elements["#{nsp}ResidentialStatus"]
+          fedex_addr_type = e_res_status ? e_res_status.text : nil
+          address_type = {'RESIDENTIAL' => 'residential',
+                          'BUSINESS'    => 'commercial'}[fedex_addr_type]
+           
+          e_addr = e_details.elements["#{nsp}Address"]        
+          location = Location.new(
+            :address1     => e_addr.elements["#{nsp}StreetLines"].text,
+            :city         => e_addr.elements["#{nsp}City"].text,
+            :province     => e_addr.elements["#{nsp}StateOrProvinceCode"].text,
+            :postal_code  => e_addr.elements["#{nsp}PostalCode"].text,
+            :country      => e_addr.elements["#{nsp}CountryCode"].text,
+            :address_type => address_type
+          )
+          
+          
+          
+          {:score => score, :location => location}
+        end
+        
+        results
       end
       
       def parse_tracking_response(response, options)
@@ -302,17 +396,21 @@ module ActiveMerchant
         )
       end
             
-      def response_status_node(document)
-        document.elements['/*/Notifications/']
+      def response_status_node(document,ns='')
+        ns = "#{ns}:" unless ns.empty?
+        document.elements["/*/#{ns}Notifications/"]
       end
       
-      def response_success?(document)
-        %w{SUCCESS WARNING NOTE}.include? response_status_node(document).get_text('Severity').to_s
+      def response_success?(document,ns='')
+        response_node = response_status_node(document,ns)
+        ns = "#{ns}:" unless ns.empty?
+        %w{SUCCESS WARNING NOTE}.include? response_node.get_text("#{ns}Severity").to_s
       end
       
-      def response_message(document)
-        response_node = response_status_node(document)
-        "#{response_status_node(document).get_text('Severity').to_s} - #{response_node.get_text('Code').to_s}: #{response_node.get_text('Message').to_s}"
+      def response_message(document,ns='')
+        response_node = response_status_node(document,ns)
+        ns = "#{ns}:" unless ns.empty?
+        "#{response_node.get_text("#{ns}Severity").to_s} - #{response_node.get_text("#{ns}Code").to_s}: #{response_node.get_text("#{ns}Message").to_s}"
       end
       
       def commit(request, test = false)
