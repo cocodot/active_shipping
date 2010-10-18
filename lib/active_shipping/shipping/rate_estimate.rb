@@ -8,6 +8,7 @@ module ActiveMerchant #:nodoc:
       attr_reader :carrier        # Carrier.name ('USPS', 'FedEx', etc.)
       attr_reader :service_name   # name of service ("First Class Ground", etc.)
       attr_reader :service_code
+      attr_reader :service_type
       attr_reader :currency       # 'USD', 'CAD', etc.
                                   # http://en.wikipedia.org/wiki/ISO_4217
       attr_reader :delivery_date  # Usually only available for express shipments
@@ -15,6 +16,7 @@ module ActiveMerchant #:nodoc:
       def initialize(origin, destination, carrier, service_name, options={})
         @origin, @destination, @carrier, @service_name = origin, destination, carrier, service_name
         @service_code = options[:service_code]
+        @service_type = options[:service_type]
         if options[:package_rates]
           @package_rates = options[:package_rates].map {|p| p.update({:rate => Package.cents_from(p[:rate])}) }
         else
