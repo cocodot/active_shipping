@@ -332,17 +332,15 @@ module ActiveMerchant
           address_type = {'RESIDENTIAL' => 'residential',
                           'BUSINESS'    => 'commercial'}[fedex_addr_type]
            
-          e_addr = e_details.elements["#{nsp}Address"]        
+          e_addr = e_details.elements["#{nsp}Address"] 
           location = Location.new(
-            :address1     => e_addr.elements["#{nsp}StreetLines"].text,
-            :city         => e_addr.elements["#{nsp}City"].text,
-            :province     => e_addr.elements["#{nsp}StateOrProvinceCode"].text,
-            :postal_code  => e_addr.elements["#{nsp}PostalCode"].text,
-            :country      => e_addr.elements["#{nsp}CountryCode"].text,
+            :address1     => lambda {e_addr.elements["#{nsp}StreetLines"].text rescue ""}.call,
+            :city         => lambda {e_addr.elements["#{nsp}City"].text rescue ""}.call,
+            :province     => lambda {e_addr.elements["#{nsp}StateOrProvinceCode"].text rescue ""}.call,
+            :postal_code  => lambda {e_addr.elements["#{nsp}PostalCode"].text rescue ""}.call,
+            :country      => lambda {e_addr.elements["#{nsp}CountryCode"].text rescue ""}.call,
             :address_type => address_type
           )
-          
-          
           
           {:score => score, :location => location}
         end
