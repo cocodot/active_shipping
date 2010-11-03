@@ -272,6 +272,8 @@ module ActiveMerchant
       def build_location_node(name, location)
         location_node = XmlNode.new(name) do |xml_node|
           xml_node << XmlNode.new('Address') do |address_node|
+            address_node << XmlNode.new('City', location.city)
+            address_node << XmlNode.new('StateOrProvinceCode', location.state)
             address_node << XmlNode.new('PostalCode', location.postal_code)
             address_node << XmlNode.new("CountryCode", location.country_code(:alpha2))
             address_node << XmlNode.new('Residential', 'true') if location.address_type == 'residential'
