@@ -9,6 +9,8 @@ module ActiveMerchant
     # :account is your FedEx account number
     # :login is your meter number
     class FedEx < Carrier
+      class BadResponseError < StandardError; end
+      
       self.retry_safe = true
       
       cattr_reader :name
@@ -335,6 +337,9 @@ module ActiveMerchant
                           'BUSINESS'    => 'commercial'}[fedex_addr_type]
            
           e_addr = e_details.elements["#{nsp}Address"] 
+          
+          raise BadResponseError if e_addr.children.empty?
+          
           location = Location.new(
             :address1     => lambda {e_addr.elements["#{nsp}StreetLines"].text rescue ""}.call,
             :city         => lambda {e_addr.elements["#{nsp}City"].text rescue ""}.call,
