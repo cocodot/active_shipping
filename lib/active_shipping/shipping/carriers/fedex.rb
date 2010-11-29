@@ -377,11 +377,15 @@ module ActiveMerchant
               )
           
           tracking_details.elements.each('Events') do |event|
-            location = Location.new(
+            l_attrs = {
               :city => event.elements['Address'].get_text('City').to_s,
               :state => event.elements['Address'].get_text('StateOrProvinceCode').to_s,
               :postal_code => event.elements['Address'].get_text('PostalCode').to_s,
-              :country => event.elements['Address'].get_text('CountryCode').to_s)
+              :country => event.elements['Address'].get_text('CountryCode').to_s
+            }
+            next unless l_attrs['postal_code'] && l_attrs['country']
+            location = Location.new(l_attrs)
+
             description = event.get_text('EventDescription').to_s
             
             # for now, just assume UTC, even though it probably isn't
