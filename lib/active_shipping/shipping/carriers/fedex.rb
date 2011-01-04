@@ -341,11 +341,11 @@ module ActiveMerchant
           raise BadResponseError if e_addr.children.empty?
           
           location = Location.new(
-            :address1     => lambda {e_addr.elements["#{nsp}StreetLines"].text rescue ""}.call,
-            :city         => lambda {e_addr.elements["#{nsp}City"].text rescue ""}.call,
-            :province     => lambda {e_addr.elements["#{nsp}StateOrProvinceCode"].text rescue ""}.call,
-            :postal_code  => lambda {e_addr.elements["#{nsp}PostalCode"].text rescue ""}.call,
-            :country      => lambda {e_addr.elements["#{nsp}CountryCode"].text rescue ""}.call,
+            :address1     => lambda {e_addr.elements["#{nsp}StreetLines"].text.to_s rescue ""}.call,
+            :city         => lambda {e_addr.elements["#{nsp}City"].text.to_s rescue ""}.call,
+            :province     => lambda {e_addr.elements["#{nsp}StateOrProvinceCode"].text.to_s rescue ""}.call,
+            :postal_code  => lambda {e_addr.elements["#{nsp}PostalCode"].text.to_s rescue ""}.call,
+            :country      => lambda {e_addr.elements["#{nsp}CountryCode"].text.to_s rescue ""}.call,
             :address_type => address_type
           )
           
